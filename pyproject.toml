@@ -15,7 +15,7 @@ maintainers = [
 license = "MIT"
 license-files = ["LICENSE"]
 dependencies = [
-  "PyGithub>=2.2.0,<2.8.1"
+  "PyGithub>=2.2.0,<2.9.2"
 ]
 
 [tool.setuptools_scm]
