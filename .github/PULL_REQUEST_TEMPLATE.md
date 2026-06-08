@@ -26,7 +26,7 @@ Paste any relevant output or screenshots here.
 ## ✅ Checklist
 
 - [ ] Tests added or updated where needed
-- [ ] `pytest` passes locally
+- [ ] `uv run pytest` passes locally
 - [ ] `mypy` passes (no type errors)
-- [ ] Documentation updated if required
+- [ ] README updated (module table + section) if a new module was added
 - [ ] Follows project code style and conventions

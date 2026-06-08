@@ -1,7 +1,7 @@
 import os
 import json
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import List, Optional
 
 from .models import (
     WebhookPayload,
@@ -9,6 +9,7 @@ from .models import (
     IssueIdentifier,
     PullRequestIdentifier,
     Sender,
+    Commit,
 )
 from .payload_parser import parse_payload
 
@@ -21,7 +22,7 @@ class Context:
     to repository, issue, PR, and workflow information inside a GitHub Actions workflow.
     """
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Initialize context by loading event payload and environment variables.
         """
@@ -92,10 +93,11 @@ class Context:
         Raises:
             RuntimeError: If issue number is unavailable.
         """
-        if self.payload.issue and "number" in self.payload.issue:
-            number = self.payload.issue["number"]
-        elif self.payload.pull_request and "number" in self.payload.pull_request:
-            number = self.payload.pull_request["number"]
+        number: Optional[int] = None
+        if self.payload.issue is not None:
+            number = self.payload.issue.number
+        elif self.payload.pull_request is not None:
+            number = self.payload.pull_request.number
         else:
             number = self.payload.extra.get("number")
 
@@ -116,25 +118,25 @@ class Context:
         Returns:
             PullRequestIdentifier | None: PR identifier if present, else None.
         """
-        if self.payload.pull_request and "number" in self.payload.pull_request:
+        if self.payload.pull_request is not None:
             return PullRequestIdentifier(
                 owner=self.repo.owner,
                 repo=self.repo.repo,
-                number=self.payload.pull_request["number"],
+                number=self.payload.pull_request.number,
             )
         return None
 
     @property
-    def sender(self) -> dict[str, Any] | Sender:
+    def sender(self) -> Sender:
         """
         Get sender information from payload or fallback to actor environment variable.
 
         Returns:
-            Sender | dict: Sender object if available, otherwise fallback dict with login.
+            Sender: Sender object from payload, or a minimal one built from GITHUB_ACTOR.
         """
         if self.payload.sender:
             return self.payload.sender
-        return Sender(login=self.actor, type=None)
+        return Sender(login=self.actor or "", type=None)
 
     @property
     def head_branch(self) -> Optional[str]:
@@ -144,8 +146,8 @@ class Context:
         Returns:
             str | None: Head branch name or None if not a PR.
         """
-        if self.payload.pull_request:
-            return self.payload.pull_request.get("head", {}).get("ref")
+        if self.payload.pull_request is not None:
+            return self.payload.pull_request.head_ref
         return None
 
     @property
@@ -156,9 +158,89 @@ class Context:
         Returns:
             str | None: Base branch name or None if not a PR.
         """
-        if self.payload.pull_request:
-            return self.payload.pull_request.get("base", {}).get("ref")
+        if self.payload.pull_request is not None:
+            return self.payload.pull_request.base_ref
         return None
+
+    @property
+    def ref_name(self) -> Optional[str]:
+        """
+        Short branch or tag name (GITHUB_REF_NAME), e.g. ``main`` instead of
+        ``refs/heads/main``.
+
+        Returns:
+            str | None: Short ref name, or None outside a runner.
+        """
+        return os.getenv("GITHUB_REF_NAME")
+
+    @property
+    def ref_type(self) -> Optional[str]:
+        """
+        Type of the ref that triggered the workflow (GITHUB_REF_TYPE).
+
+        Returns:
+            str | None: ``"branch"`` or ``"tag"``, or None outside a runner.
+        """
+        return os.getenv("GITHUB_REF_TYPE")
+
+    @property
+    def trigger_actor(self) -> Optional[str]:
+        """
+        The actor that triggered the initial workflow run (GITHUB_TRIGGERING_ACTOR).
+
+        Differs from ``actor`` when a workflow is re-run by a different user.
+
+        Returns:
+            str | None: GitHub login of the triggering actor, or None outside a runner.
+        """
+        return os.getenv("GITHUB_TRIGGERING_ACTOR")
+
+    @property
+    def is_pr(self) -> bool:
+        """
+        True when the current event includes a pull request payload.
+
+        Returns:
+            bool: Whether payload.pull_request is present.
+        """
+        return self.payload.pull_request is not None
+
+    @property
+    def is_push(self) -> bool:
+        """True when the triggering event is a ``push``."""
+        return self.event_name == "push"
+
+    @property
+    def is_issue(self) -> bool:
+        """True when the triggering event is ``issues`` (open, close, label, etc.)."""
+        return self.event_name == "issues"
+
+    @property
+    def is_release(self) -> bool:
+        """True when the triggering event is ``release``."""
+        return self.event_name == "release"
+
+    @property
+    def is_schedule(self) -> bool:
+        """True when the triggering event is ``schedule`` (cron)."""
+        return self.event_name == "schedule"
+
+    @property
+    def is_workflow_dispatch(self) -> bool:
+        """True when the triggering event is ``workflow_dispatch`` (manual run)."""
+        return self.event_name == "workflow_dispatch"
+
+    @property
+    def commits(self) -> List[Commit]:
+        """
+        Typed list of commits from a push-event payload.
+
+        For non-push events this returns an empty list.
+
+        Returns:
+            List[Commit]: Commits included in the push, or [].
+        """
+        return self.payload.commits
 
 
 # Instance of context for easy reuse

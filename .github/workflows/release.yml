@@ -1,19 +1,40 @@
-name: Create GitHub Release
+name: Release gh-actions-tool-kit
+
+# Watches commits pushed to main.
+# Maintains a "Release PR" that bumps the version in pyproject.toml
+# and auto-generates a CHANGELOG from conventional commit messages.
+#
+# When you merge the Release PR:
+#   - smart-gh-release creates the git tag and GitHub Release
+#   - That "release published" event triggers upload-to-pypi.yml automatically
+#
+# CONVENTIONAL COMMITS (determines version bump)
+# ───────────────────────────────────────────────
+#   feat: ...          → minor bump  (0.1.0 → 0.2.0)
+#   fix: ...           → patch bump  (0.1.0 → 0.1.1)
+#   feat!: ...         → major bump  (0.1.0 → 1.0.0)
+#   BREAKING CHANGE:   → major bump
+#   chore/docs/style   → no release PR update
+#
+# SETUP REQUIRED (one-time)
+# ──────────────────────────
+# Create a GitHub App and add to repo:
+#   vars.APP_ID      — the app's numeric ID
+#   secrets.PRIVATE_KEY — the app's private key (PEM)
 
 on:
   push:
-    branches:
-      - 'main'
-  workflow_dispatch: # Allow manual triggers
+    branches: [main]
+    paths-ignore:
+      - 'README.md'
+      - 'codecov.yml'
+
+permissions:
+  contents: write
+  pull-requests: write
 
 jobs:
-  create-github-release:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout Repository
-        uses: actions/checkout@v5
-        
-      - name: Create Git Release
-        uses: ab-git-actions/gh-release@v1.0.3
-        with:
-          github_token: '${{ secrets.GH_TOKEN }}'
+  create-release-pr:
+    name: Create Release PR
+    uses: Dev-kitx/.github/.github/workflows/github-release.yml@main
+    secrets: inherit
