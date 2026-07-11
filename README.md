@@ -1,10 +1,11 @@
 # gh-actions-tool-kit
 
-[![CI](https://github.com/Dev-kitx/gh-actions-tool-kit/actions/workflows/ci.yml/badge.svg)](https://github.com/Dev-kitx/gh-actions-tool-kit/actions/workflows/ci.yml)
-[![PyPI version](https://img.shields.io/pypi/v/gh-actions-tool-kit)](https://pypi.org/project/gh-actions-tool-kit/)
-[![Python versions](https://img.shields.io/pypi/pyversions/gh-actions-tool-kit)](https://pypi.org/project/gh-actions-tool-kit/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/Dev-kitx/gh-actions-tool-kit/blob/main/LICENSE)
-[![Checked with mypy](https://img.shields.io/badge/mypy-checked-blue)](https://mypy-lang.org/)
+[![CI](https://img.shields.io/github/actions/workflow/status/Dev-kitx/gh-actions-tool-kit/ci.yml?style=for-the-badge&label=CI)](https://github.com/Dev-kitx/gh-actions-tool-kit/actions/workflows/ci.yml)
+[![PyPI version](https://img.shields.io/pypi/v/gh-actions-tool-kit?style=for-the-badge)](https://pypi.org/project/gh-actions-tool-kit/)
+[![Python versions](https://img.shields.io/pypi/pyversions/gh-actions-tool-kit?style=for-the-badge)](https://pypi.org/project/gh-actions-tool-kit/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](https://github.com/Dev-kitx/gh-actions-tool-kit/blob/main/LICENSE)
+[![Checked with mypy](https://img.shields.io/badge/mypy-checked-blue?style=for-the-badge)](https://mypy-lang.org/)
+[![codecov](https://img.shields.io/codecov/c/github/Dev-kitx/gh-actions-tool-kit?style=for-the-badge&token=CODECOV_TOKEN)](https://codecov.io/gh/Dev-kitx/gh-actions-tool-kit)
 
 A lightweight, typed Python toolkit for building GitHub Actions. Inspired by [`@actions/core`](https://github.com/actions/toolkit/tree/main/packages/core) and [`actions/github`](https://github.com/actions/toolkit/tree/main/packages/github).
 
