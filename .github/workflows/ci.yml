@@ -29,5 +29,14 @@ jobs:
       - name: Run tests
         run: uv run pytest --cov-report xml:coverage.xml --cov=. --cov-report=term-missing tests --junitxml=report.xml
 
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.12'
+        uses: codecov/codecov-action@v6
+        with:
+          files: coverage.xml
+          fail_ci_if_error: false
+          slug: Dev-kitx/gh-actions-tool-kit
+          token: ${{ secrets.CODECOV_TOKEN }}
+
       - name: Run type checks
         run: uv run mypy actions_tool_kit/
