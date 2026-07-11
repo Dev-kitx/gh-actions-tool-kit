@@ -6,7 +6,6 @@ from actions_tool_kit.actions_io import which, mkdirp, rmrf, cp, mv, glob
 
 
 def test_which_finds_python():
-    result = which(sys.executable)
     # sys.executable is the full path so which may return None; use "python3" instead
     result = which("python3") or which("python")
     assert result is not None

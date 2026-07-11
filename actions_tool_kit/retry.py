@@ -57,7 +57,9 @@ def retry(
             time.sleep(current_delay)
             current_delay *= backoff
 
-    raise last_exc  # type: ignore[misc]
+    if last_exc is not None:
+        raise last_exc
+    raise RuntimeError("retry exhausted all attempts without capturing an exception")
 
 
 __all__ = ["retry"]

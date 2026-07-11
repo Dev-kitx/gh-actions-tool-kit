@@ -40,6 +40,9 @@ on:
         type: choice
         options: [pypi]
 
+permissions:
+  contents: read
+
 jobs:
   # ── 1. Run the full test suite before we ever touch PyPI ──────────────────
   test:

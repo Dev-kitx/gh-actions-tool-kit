@@ -387,10 +387,13 @@ def test_context_manager_failure_on_exception(monkeypatch):
         captured.append(json.loads(req.data) if req.data else {})
         return _mock_resp(_create_response(1))
 
-    with pytest.raises(ValueError):
+    try:
         with patch("actions_tool_kit.checks.urllib.request.urlopen", side_effect=fake_urlopen):
             with CheckRun.create("ci", "sha"):
                 raise ValueError("something broke")
+        assert False, "expected ValueError"
+    except ValueError:
+        pass
 
     final = captured[-1]
     assert final["conclusion"] == "failure"
