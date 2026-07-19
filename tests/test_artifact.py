@@ -1,7 +1,6 @@
 import json
 import pytest
-from pathlib import Path
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock
 
 from actions_tool_kit.artifact import ArtifactClient, ArtifactInfo
 
