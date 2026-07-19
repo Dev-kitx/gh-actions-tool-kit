@@ -3,7 +3,19 @@ name: CI
 on:
   push:
     branches: [main]
+    paths:
+      - 'actions_tool_kit/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/ci.yml'
   pull_request:
+    paths:
+      - 'actions_tool_kit/**'
+      - 'tests/**'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.github/workflows/ci.yml'
 
 permissions:
   contents: read
