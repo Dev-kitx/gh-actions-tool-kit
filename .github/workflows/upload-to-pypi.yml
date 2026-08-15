@@ -1,63 +1,122 @@
 name: Publish Python 🐍 distribution 📦 to PyPI
 
+# Triggered automatically when a GitHub Release is published.
+# The release tag (e.g. "1.2.3") becomes the package version via setuptools-scm.
+#
+# ROLLBACK / REVERT STRATEGY
+# ───────────────────────────
+# PyPI does not allow re-uploading or deleting a released version.
+# The correct options are:
+#
+#   1. YANK  (preferred for bugs)
+#      Run the "Yank Release" workflow. Yank marks a version as bad so that
+#      `pip install staticnest` skips it, but pinned installs still resolve it.
+#      Users see a deprecation warning. Reversible — you can un-yank later.
+#
+#   2. PATCH RELEASE  (preferred for critical fixes)
+#      Fix the bug, cut a new patch release (e.g. 1.2.1), and publish that.
+#      Optionally also yank the bad version.
+#
+# SETUP REQUIRED (one-time)
+# ──────────────────────────
+# This workflow uses PyPI Trusted Publishing (OIDC) — no API tokens needed.
+# Configure it at https://pypi.org/manage/account/publishing/ by adding:
+#   publisher: GitHub Actions
+#   owner:      <your-github-username>
+#   repository: <repo-name>
+#   workflow:   pypi-publish.yml
+#   environment: pypi
+
 on:
-  push:
-    tags:
-      - "*"    # publish when you publish a GitHub Release
-  workflow_dispatch:       # allow manual runs
+  release:
+    types: [published]
+
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "Publish target"
+        required: true
+        default: pypi
+        type: choice
+        options: [pypi]
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    name: Build dist 📦
+  # ── 1. Run the full test suite before we ever touch PyPI ──────────────────
+  test:
+    name: Tests (pre-publish gate)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0   # needed for setuptools-scm to read the tag
 
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      - name: Install uv
+        uses: astral-sh/setup-uv@21d5da3bc3126fc3b5b182828c8772282a6b694d # v8
+        with:
+          enable-cache: true
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: uv sync --locked --extra dev
+
+      - name: Run tests
+        run: uv run pytest --cov-report xml:coverage.xml --cov=. --cov-report=term-missing tests --junitxml=report.xml
+
+      - name: Run type checks
+        run: uv run mypy actions_tool_kit/
+
+  # ── 2. Build the distribution artefacts ───────────────────────────────────
+  build:
+    name: Build distribution 📦
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@21d5da3bc3126fc3b5b182828c8772282a6b694d # v8
         with:
           python-version: "3.12"
 
-      - name: Setup Env and Run tests
-        run: |
-          make setup-env
-          make run-pytest
+      - name: Build sdist and wheel
+        run: uv build
 
-      - name: Install build backend
-        run: |
-          python -m pip install -U pip
-          pip install build
+      - name: Inspect built artefacts
+        run: ls -lh dist/
 
-      - name: Build sdist/wheel
-        run: python -m build
-
-      - name: Upload built dists
-        uses: actions/upload-artifact@v5
+      - name: Upload dist artifacts
+        uses: actions/upload-artifact@v7
         with:
           name: dist
-          path: dist/*
+          path: dist/
+          retention-days: 7
 
-  publish:
-    name: Upload Python 🐍 distribution 📦 to PyPI
+  # ── 3. Publish to PyPI ────────────────────────────────────────────────────
+  publish-pypi:
+    name: Publish → PyPI
     needs: build
     runs-on: ubuntu-latest
-    # Trusted Publishing requires OIDC token permission
+    if: >
+      github.event_name == 'release' ||
+      github.event_name == 'workflow_dispatch'
+    environment:
+      name: pypi
+      url: https://pypi.org/p/gh-actions-tool-kit
     permissions:
       id-token: write
       contents: read
-    environment:
-      name: pypi
-      # Optional but nice: link the env to your project page
-      url: https://pypi.org/p/ab-git-actions
+
     steps:
-      - name: Download dists
-        uses: actions/download-artifact@v7
+      - name: Download dist artifacts
+        uses: actions/download-artifact@v8
         with:
           name: dist
-          path: dist
+          path: dist/
 
-      - name: Publish to PyPI (Trusted Publisher)
+      - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1

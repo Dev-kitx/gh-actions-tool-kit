@@ -5,8 +5,9 @@ from __future__ import annotations
 
 import os
 import sys
+import uuid
 from contextlib import contextmanager
-from typing import Any, ContextManager, Iterable, Optional, Union
+from typing import Any, Iterable, Iterator, Optional, Union
 
 
 def _file_from_env(var: str) -> Optional[str]:
@@ -23,14 +24,28 @@ def _file_from_env(var: str) -> Optional[str]:
 
 
 def _append_line(filepath: str, line: str) -> None:
-    """Append a single line to a file, ensuring a trailing newline.
-
-    Args:
-        filepath: Target file path.
-        line: Line content (newline will be added if missing).
-    """
+    """Append a single line to a file, ensuring a trailing newline."""
     with open(filepath, "a", encoding="utf-8") as f:
         f.write(line.rstrip("\n") + "\n")
+
+
+def _append_env_file_command(filepath: str, name: str, value: str) -> None:
+    """Write a name=value pair to a GitHub env file, using heredoc syntax for multiline values.
+
+    Single-line values use ``name=value`` format.
+    Multiline values use the heredoc format required by newer runners::
+
+        name<<_delimiter_
+        value line 1
+        value line 2
+        _delimiter_
+    """
+    with open(filepath, "a", encoding="utf-8") as f:
+        if "\n" in value or "\r" in value:
+            delim = f"ghadelimiter_{uuid.uuid4().hex}"
+            f.write(f"{name}<<{delim}\n{value}\n{delim}\n")
+        else:
+            f.write(f"{name}={value}\n")
 
 
 def _serialize_props(**props: Any) -> str:
@@ -120,6 +135,32 @@ def get_input(
     return val.strip() if trim else val
 
 
+def get_multiline_input(
+    name: str,
+    *,
+    required: bool = False,
+    trim: bool = True,
+) -> list[str]:
+    """Read a multiline action input as a list of non-empty lines.
+
+    Each newline-separated segment becomes one list element. Empty lines are
+    dropped after trimming so callers get a clean list without filtering.
+
+    Args:
+        name: Input name as defined in workflow 'with:'.
+        required: If True, raise when the input is missing or blank.
+        trim: If True, strip whitespace from each line before filtering.
+
+    Returns:
+        List of non-empty line strings.
+    """
+    raw = get_input(name, required=required, trim=False)
+    lines = raw.splitlines()
+    if trim:
+        lines = [ln.strip() for ln in lines]
+    return [ln for ln in lines if ln]
+
+
 def get_boolean_input(
     name: str,
     *,
@@ -148,6 +189,9 @@ def get_boolean_input(
 def set_output(name: str, value: Union[str, int, float, bool]) -> None:
     """Set a step output using $GITHUB_OUTPUT, with legacy fallback.
 
+    Multiline values are written using the heredoc delimiter format required
+    by GitHub Actions runners so that newlines are preserved correctly.
+
     Args:
         name: Output variable name.
         value: Output value; will be stringified.
@@ -157,11 +201,14 @@ def set_output(name: str, value: Union[str, int, float, bool]) -> None:
     if not path:
         _cmd("set-output", f"{name}={v}")  # legacy/local fallback
         return
-    _append_line(path, f"{name}={v}")
+    _append_env_file_command(path, name, v)
 
 
 def export_variable(name: str, value: Union[str, int, float, bool]) -> None:
     """Export an environment variable for subsequent steps.
+
+    Multiline values are written using the heredoc delimiter format required
+    by GitHub Actions runners so that newlines are preserved correctly.
 
     Args:
         name: Variable name.
@@ -172,7 +219,7 @@ def export_variable(name: str, value: Union[str, int, float, bool]) -> None:
     if not path:
         os.environ[name] = v  # local fallback
         return
-    _append_line(path, f"{name}={v}")
+    _append_env_file_command(path, name, v)
 
 
 def add_path(input_path: str) -> None:
@@ -223,6 +270,45 @@ def get_state(name: str) -> str:
     return os.getenv(f"STATE_{name}", "")
 
 
+def is_debug() -> bool:
+    """Return True when step debug logging is enabled (RUNNER_DEBUG=1)."""
+    return os.getenv("RUNNER_DEBUG") == "1"
+
+
+def stop_commands(end_token: str) -> None:
+    """Stop workflow command processing until resume_commands() is called.
+
+    Use this before emitting untrusted content so the runner does not
+    interpret it as workflow commands.
+
+    Args:
+        end_token: A unique token used to resume commands later.
+    """
+    _cmd("stop-commands", end_token)
+
+
+def resume_commands(end_token: str) -> None:
+    """Resume workflow command processing after stop_commands().
+
+    Args:
+        end_token: The same token passed to stop_commands().
+    """
+    sys.stdout.write(f"::{end_token}::\n")
+    sys.stdout.flush()
+
+
+def set_command_echo(enabled: bool) -> None:
+    """Toggle workflow command echoing in the runner log.
+
+    When enabled, every workflow command (e.g. ``::set-output::``) is echoed
+    to the log alongside its effect. Useful for debugging action internals.
+
+    Args:
+        enabled: True to turn echoing on, False to turn it off.
+    """
+    _cmd("echo", "on" if enabled else "off")
+
+
 def set_secret(secret: str) -> None:
     """Mask a secret in the logs using 'add-mask' command.
 
@@ -268,7 +354,9 @@ def notice(
     title: Optional[str] = None,
     file: Optional[str] = None,
     line: Optional[int] = None,
+    end_line: Optional[int] = None,
     col: Optional[int] = None,
+    end_column: Optional[int] = None,
 ) -> None:
     """Emit a non-fatal informational annotation (blue box in UI).
 
@@ -276,10 +364,15 @@ def notice(
         message: The content to display.
         title: Optional short title shown in UI.
         file: Optional file path to attach to annotation.
-        line: Optional line number.
-        col: Optional column number.
+        line: Optional start line number.
+        end_line: Optional end line number for range annotations.
+        col: Optional start column number.
+        end_column: Optional end column number for range annotations.
     """
-    _cmd("notice", str(message), title=title, file=file, line=line, col=col)
+    _cmd(
+        "notice", str(message),
+        title=title, file=file, line=line, endLine=end_line, col=col, endColumn=end_column,
+    )
 
 
 def warning(
@@ -288,10 +381,25 @@ def warning(
     title: Optional[str] = None,
     file: Optional[str] = None,
     line: Optional[int] = None,
+    end_line: Optional[int] = None,
     col: Optional[int] = None,
+    end_column: Optional[int] = None,
 ) -> None:
-    """Emit a warning annotation (yellow)."""
-    _cmd("warning", str(message), title=title, file=file, line=line, col=col)
+    """Emit a warning annotation (yellow).
+
+    Args:
+        message: The content to display.
+        title: Optional short title.
+        file: Optional file path.
+        line: Optional start line number.
+        end_line: Optional end line number for range annotations.
+        col: Optional start column number.
+        end_column: Optional end column number for range annotations.
+    """
+    _cmd(
+        "warning", str(message),
+        title=title, file=file, line=line, endLine=end_line, col=col, endColumn=end_column,
+    )
 
 
 def error(
@@ -300,10 +408,25 @@ def error(
     title: Optional[str] = None,
     file: Optional[str] = None,
     line: Optional[int] = None,
+    end_line: Optional[int] = None,
     col: Optional[int] = None,
+    end_column: Optional[int] = None,
 ) -> None:
-    """Emit an error annotation (red)."""
-    _cmd("error", str(message), title=title, file=file, line=line, col=col)
+    """Emit an error annotation (red).
+
+    Args:
+        message: The content to display.
+        title: Optional short title.
+        file: Optional file path.
+        line: Optional start line number.
+        end_line: Optional end line number for range annotations.
+        col: Optional start column number.
+        end_column: Optional end column number for range annotations.
+    """
+    _cmd(
+        "error", str(message),
+        title=title, file=file, line=line, endLine=end_line, col=col, endColumn=end_column,
+    )
 
 
 def set_failed(message: Union[str, Any], fail: bool = False) -> None:
@@ -346,7 +469,7 @@ def end_group() -> None:
 
 
 @contextmanager
-def group(name: str) -> ContextManager[None]:
+def group(name: str) -> Iterator[None]:
     """Context manager that wraps logs in a collapsible group.
 
     Example:
@@ -363,6 +486,7 @@ def group(name: str) -> ContextManager[None]:
 __all__ = [
     "get_input",
     "get_boolean_input",
+    "get_multiline_input",
     "set_output",
     "export_variable",
     "add_path",
@@ -370,6 +494,10 @@ __all__ = [
     "get_state",
     "set_secret",
     "append_summary",
+    "is_debug",
+    "stop_commands",
+    "resume_commands",
+    "set_command_echo",
     "debug",
     "notice",
     "warning",
